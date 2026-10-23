@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Раскрой листа металла — визуализация и оптимизация</title>
+<style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; }
+    body {
+        background: #0f1a24;
+        margin: 0;
+        padding: 20px;
+        color: #e9f1f7;
+    }
+    .app {
+        max-width: 1600px;
+        margin: 0 auto;
+        background: #14212b;
+        border-radius: 24px;
+        padding: 24px 28px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+    h1 {
+        font-weight: 500;
+        font-size: 1.7rem;
+        margin: 0 0 20px 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #b6d9f0;
+        border-bottom: 1px solid #2b4152;
+        padding-bottom: 14px;
+        flex-wrap: wrap;
+    }
+    h1 .actions {
+        margin-left: auto;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    h2 {
+        font-weight: 400;
+        font-size: 1.05rem;
+        margin: 0 0 12px 0;
+        color: #9bbdd4;
+        letter-spacing: 0.3px;
+    }
+    .layout {
+        display: grid;
+        grid-template-columns: 380px 1fr;
+        gap: 24px;
+        align-items: start;
+    }
+    @media (max-width: 1100px) {
+        .layout { grid-template-columns: 1fr; }
+    }
+    .card {
+        background: #0e1b26;
+        border-radius: 18px;
+        padding: 18px 20px;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.3);
+        border: 1px solid #253b49;
+        margin-bottom: 18px;
+    }
+    .field-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .field-row label {
+        font-size: 0.88rem;
+        color: #adc9dd;
+    }
+    .field-row input {
+        background: #0b131a;
+        border: 1px solid #2d4a5c;
+        border-radius: 12px;
+        padding: 9px 12px;
+        color: #fff;
+        font-size: 0.95rem;
+        width: 100px;
+        outline: none;
+        transition: 0.2s;
+    }
+    .field-row input:focus {
+        border-color: #4d9fd6;
+        box-shadow: 0 0 0 3px rgba(77,159,214,0.25);
+    }
+    .field-row input.wide { width: 110px; }
+    .field-row input.narrow { width: 75px; }
+    .btn {
+        background: #2d5f7e;
+        border: none;
+        border-radius: 12px;
+        padding: 9px 18px;
+        color: white;
+        font-weight: 500;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: 0.15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 3px 0 #0e1e2a;
+    }
+    .btn:hover { background: #3b7ba3; transform: translateY(-1px); box-shadow: 0 4px 0 #0e1e2a; }
+    .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #0e1e2a; }
+    .btn.secondary { background: #374d5c; box-shadow: 0 3px 0 #101a20; }
+    .btn.secondary:hover { background: #4a6577; }
+    .btn.danger { background: #7a3e3e; box-shadow: 0 3px 0 #3d1e1e; }
+    .btn.danger:hover { background: #a14f4f; }
+    .btn.accent { background: #2c7a4a; box-shadow: 0 3px 0 #0e2a19; }
+    .btn.accent:hover { background: #3d9a62; }
+    .btn.excel { background: #2a6e3a; box-shadow: 0 3px 0 #123b1e; }
+    .btn.excel:hover { background: #3a8c4d; }
+    .btn.small { padding: 6px 12px; font-size: 0.82rem; }
+    .parts-list {
+        max-height: 260px;
+        overflow-y: auto;
+        padding-right: 4px;
+        margin-top: 8px;
+    }
+    .part-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #0b1620;
+        padding: 8px 14px;
+        border-radius: 10px;
+        margin-bottom: 6px;
+        border: 1px solid #1f3441;
+        font-size: 0.88rem;
+    }
+    .part-item:hover { border-color: #3e6a85; }
+    .part-item .dim { font-weight: 600; color: #d0eaff; }
+    .part-item .qty {
+        background: #234556;
+        padding: 2px 10px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        color: #cee9ff;
+        margin-left: auto;
+    }
+    .part-item .remove {
+        background: none;
+        border: none;
+        color: #b37b7b;
+        font-size: 1.2rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 6px;
+        border-radius: 12px;
+    }
+    .part-item .remove:hover { color: #ff8a8a; background: #2e1b1b; }
+    .empty-parts { color: #6e8da3; font-style: italic; padding: 14px 8px; text-align: center; font-size: 0.9rem; }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    .stat-box {
+        background: #132431;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid #243d4d;
+    }
+    .stat-box .label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #7fa3bb;
+        margin-bottom: 6px;
+    }
+    .stat-box .value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #b6e2ff;
+        line-height: 1;
+    }
+    .stat-box .value.small { font-size: 1.1rem; }
+    .stat-box.good .value { color: #6ee6a1; }
+    .stat-box.warn .value { color: #f0c56b; }
+    .stat-box.cut .value { color: #f0a56b; }
+    .progress-bar {
+        height: 8px;
+        background: #0a141c;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2c7a4a, #6ee6a1);
+        transition: width 0.3s ease;
+    }
+    .sheets-view {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+    .sheet-wrap {
+        background: #0b1620;
+        border-radius: 16px;
+        padding: 14px;
+        border: 1px solid #243d4d;
+    }
+    .sheet-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        font-size: 0.88rem;
+        color: #9bbdd4;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .sheet-header .title { font-weight: 600; color: #b6d9f0; }
+    .sheet-canvas-wrap {
+        background: #050b10;
+        border-radius: 8px;
+        padding: 8px;
+        display: flex;
+        justify-content: center;
+        overflow: auto;
+    }
+    canvas.sheet-canvas {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        image-rendering: crisp-edges;
+        border: 1px solid #2b4152;
+        border-radius: 4px;
+        background: #0a1a24;
+    }
+    .error-msg {
+        color: #ff9b9b;
+        background: #2e1a1a;
+        padding: 9px 16px;
+        border-radius: 20px;
+        font-size: 0.88rem;
+        margin-top: 10px;
+        display: none;
+    }
+    .error-msg.visible { display: inline-block; }
+    .error-msg.success { color: #9bffb5; background: #1a2e1f; }
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 10px;
+        font-size: 0.8rem;
+        color: #a8c4d8;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #0b1620;
+        padding: 6px 12px 6px 8px;
+        border-radius: 20px;
+        border: 1px solid #1f3441;
+    }
+    .legend-color {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid rgba(255,255,255,0.2);
+        flex-shrink: 0;
+    }
+    .legend-dim { font-weight: 600; color: #d0eaff; }
+    .legend-qty {
+        background: #234556;
+        padding: 1px 8px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        color: #cee9ff;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6e8da3;
+        font-size: 0.95rem;
+    }
+    .empty-state .big { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+    footer {
+        margin-top: 20px;
+        text-align: center;
+        font-size: 0.78rem;
+        color: #4a6d82;
+        border-top: 1px solid #1f3441;
+        padding-top: 14px;
+    }
+
+    /* Модальное окно */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+        background: #14212b;
+        border-radius: 20px;
+        padding: 24px 26px;
+        max-width: 440px;
+        width: 100%;
+        border: 1px solid #2b4152;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    }
+    .modal h3 {
+        margin: 0 0 16px 0;
+        font-weight: 500;
+        color: #b6d9f0;
+        font-size: 1.15rem;
+    }
+    .modal .field-row input {
+        width: 100%;
+        font-size: 1rem;
+    }
+    .modal .modal-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+        justify-content: flex-end;
+    }
+
+    /* Стили для печати */
+    @media print {
+        body {
+            background: #fff !important;
+            color: #000 !important;
+            padding: 0;
+            margin: 0;
+        }
+        .app {
+            background: #fff !important;
+            box-shadow: none !important;
+            padding: 10px !important;
+            border-radius: 0;
+            max-width: 100%;
+        }
+        h1 { color: #000 !important; border-bottom: 2px solid #333 !important; }
+        h1 .actions, .no-print, .btn, footer .hint { display: none !important; }
+        .card, .sheet-wrap, .stat-box {
+            background: #fff !important;
+            border: 1px solid #ccc !important;
+            box-shadow: none !important;
+            color: #000 !important;
+        }
+        .stat-box .label { color: #555 !important; }
+        .stat-box .value { color: #000 !important; }
+        .sheet-header { color: #000 !important; }
+        .sheet-header .title { color: #000 !important; font-weight: 700; }
+        canvas.sheet-canvas { border: 1px solid #333 !important; background: #fff !important; }
+        .layout { grid-template-columns: 1fr !important; }
+        .progress-bar { border: 1px solid #999; }
+        .progress-fill { background: #666 !important; }
+        footer { color: #333 !important; border-top: 1px solid #999 !important; }
+        .no-print { display: none !important; }
+        .sheet-wrap { page-break-inside: avoid; margin-bottom: 12px; }
+        .sheet-canvas-wrap { padding: 4px; background: #fff !important; }
+        .legend-item { background: #fff !important; border: 1px solid #ccc !important; color: #000 !important; }
+        .legend-dim { color: #000 !important; }
+        .legend-qty { background: #eee !important; color: #000 !important; border: 1px solid #999; }
+    }
+    .print-header {
+        display: none;
+        text-align: center;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #333;
+    }
+    .print-header h2 { color: #000; margin: 0 0 6px 0; font-size: 1.2rem; }
+    .print-header .meta { font-size: 0.85rem; color: #555; }
+    @media print {
+        .print-header { display: block !important; }
+    }
+    .actions-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .actions-row .btn { flex: 1 1 auto; min-width: 90px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+    <h1>
+        🧲 Раскрой листа металла
+        <div class="actions no-print">
+            <button class="btn accent" id="printBtn">🖨 Печать / PDF</button>
+        </div>
+    </h1>
+
+    <div class="print-header">
+        <h2>Карта раскроя листа металла</h2>
+        <div class="meta" id="printMeta"></div>
+    </div>
+
+    <div class="layout">
+        <!-- Левая колонка: настройки -->
+        <div class="no-print">
+            <div class="card">
+                <h2>📐 Размер листа (мм)</h2>
+                <div class="field-row">
+                    <label>Ширина</label>
+                    <input type="number" id="sheetWidth" value="1000" min="1" step="1">
+                </div>
+                <div class="field-row">
+                    <label>Высота</label>
+                    <input type="number" id="sheetHeight" value="2000" min="1" step="1">
+                </div>
+                <div class="field-row">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="checkbox" id="allowRotate" checked style="width:auto; accent-color:#4d9fd6;">
+                        Разрешить поворот деталей
+                    </label>
+                </div>
+                <div class="field-row">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="checkbox" id="autoKerf" style="width:auto; accent-color:#4d9fd6;">
+                        Учитывать рез (зазор)
+                    </label>
+                    <input type="number" id="kerf" value="2" min="0" step="0.5" class="narrow">
+                    <span style="color:#7a9bb0; font-size:0.85rem;">мм</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>➕ Добавить деталь</h2>
+                <div class="field-row">
+                    <label>Ширина</label>
+                    <input type="number" id="partWidth" value="300" min="1" step="1" class="wide">
+                </div>
+                <div class="field-row">
+                    <label>Высота</label>
+                    <input type="number" id="partHeight" value="400" min="1" step="1" class="wide">
+                </div>
+                <div class="field-row">
+                    <label>Кол-во</label>
+                    <input type="number" id="partQty" value="4" min="1" step="1" class="narrow">
+                    <button class="btn" id="addPartBtn" style="margin-left:auto;">Добавить</button>
+                </div>
+                <div class="parts-list" id="partsContainer"></div>
+            </div>
+
+            <div class="card">
+                <h2>⚙️ Действия</h2>
+                <div class="actions-row">
+                    <button class="btn" id="calcBtn">📊 Рассчитать</button>
+                    <button class="btn secondary" id="clearPartsBtn">🗑 Детали</button>
+                    <button class="btn danger" id="resetAllBtn">↺ Всё</button>
+                </div>
+                <div class="actions-row">
+                    <button class="btn secondary" id="saveBtn">💾 Сохранить</button>
+                    <button class="btn secondary" id="loadBtn">📂 Загрузить</button>
+                    <button class="btn excel" id="excelBtn">📊 Excel</button>
+                    <input type="file" id="fileInput" accept=".json,application/json" style="display:none;">
+                </div>
+                <div class="error-msg" id="errorMessage"></div>
+            </div>
+        </div>
+
+        <!-- Правая колонка: результат и визуализация -->
+        <div>
+            <div class="card" id="resultCard">
+                <h2>📈 Результат расчёта</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="label">Листов нужно</div>
+                        <div class="value" id="sheetsNeeded">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Деталей всего</div>
+                        <div class="value small" id="totalParts">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Площадь деталей</div>
+                        <div class="value small" id="partArea">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Площадь листов</div>
+                        <div class="value small" id="sheetArea">0</div>
+                    </div>
+                    <div class="stat-box good" id="utilBox">
+                        <div class="label">Использование</div>
+                        <div class="value small" id="utilization">0%</div>
+                        <div class="progress-bar"><div class="progress-fill" id="utilBar" style="width:0%;"></div></div>
+                    </div>
+                    <div class="stat-box cut" id="cutBox">
+                        <div class="label">Длина реза</div>
+                        <div class="value small" id="cutLength">0 м</div>
+                    </div>
+                </div>
+                <div class="legend" id="legend"></div>
+            </div>
+
+            <div class="sheets-view" id="sheetsView">
+                <div class="empty-state">
+                    <div class="big">📄</div>
+                    <div>Добавьте детали и нажмите «Рассчитать»,<br>чтобы увидеть карту раскроя.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Алгоритм упаковки: MaxRects (Best Short Side Fit). Рез считается по фактическим размерам деталей (общие границы не дублируются).
+    </footer>
+</div>
+
+<!-- Модальное окно для сохранения -->
+<div class="modal-overlay" id="saveModal">
+    <div class="modal">
+        <h3>💾 Сохранить расчёт</h3>
+        <div class="field-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+            <label style="font-size:0.9rem;">Имя файла</label>
+            <input type="text" id="fileNameInput" placeholder="raskroy" style="width:100%;">
+        </div>
+        <div style="font-size:0.8rem; color:#7fa3bb; margin-top:6px;">
+            Будет сохранён как <b id="fileNamePreview">raskroy.json</b>
+        </div>
+        <div class="modal-actions">
+            <button class="btn secondary" id="saveCancelBtn">Отмена</button>
+            <button class="btn accent" id="saveConfirmBtn">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    // ========== Состояние ==========
+    let parts = [];
+    let lastResult = null;
+
+    // ========== DOM ==========
+    const $ = id => document.getElementById(id);
+    const sheetWidthInput = $('sheetWidth');
+    const sheetHeightInput = $('sheetHeight');
+    const allowRotateInput = $('allowRotate');
+    const autoKerfInput = $('autoKerf');
+    const kerfInput = $('kerf');
+    const partWidthInput = $('partWidth');
+    const partHeightInput = $('partHeight');
+    const partQtyInput = $('partQty');
+    const addPartBtn = $('addPartBtn');
+    const partsContainer = $('partsContainer');
+    const calcBtn = $('calcBtn');
+    const clearPartsBtn = $('clearPartsBtn');
+    const resetAllBtn = $('resetAllBtn');
+    const printBtn = $('printBtn');
+    const saveBtn = $('saveBtn');
+    const loadBtn = $('loadBtn');
+    const excelBtn = $('excelBtn');
+    const fileInput = $('fileInput');
+    const sheetsNeededSpan = $('sheetsNeeded');
+    const totalPartsSpan = $('totalParts');
+    const partAreaSpan = $('partArea');
+    const sheetAreaSpan = $('sheetArea');
+    const utilizationSpan = $('utilization');
+    const utilBar = $('utilBar');
+    const utilBox = $('utilBox');
+    const cutLengthSpan = $('cutLength');
+    const sheetsView = $('sheetsView');
+    const errorMessage = $('errorMessage');
+    const legendDiv = $('legend');
+    const printMeta = $('printMeta');
+
+    const saveModal = $('saveModal');
+    const fileNameInput = $('fileNameInput');
+    const fileNamePreview = $('fileNamePreview');
+    const saveCancelBtn = $('saveCancelBtn');
+    const saveConfirmBtn = $('saveConfirmBtn');
+
+    // ========== Утилиты ==========
+    function showError(msg) {
+        errorMessage.textContent = msg;
+        errorMessage.classList.remove('success');
+        errorMessage.classList.add('visible');
+        clearTimeout(showError._t);
+        showError._t = setTimeout(() => errorMessage.classList.remove('visible'), 4500);
+    }
+
+    function showSuccess(msg) {
+        errorMessage.textContent = msg;
+        errorMessage.classList.add('visible', 'success');
+        clearTimeout(showError._t);
+        showError._t = setTimeout(() => errorMessage.classList.remove('visible', 'success'), 3500);
+    }
+
+    function uid() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    function fmt(n, digits = 0) {
+        return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: digits });
+    }
+
+    function colorForPart(w, h, seed = 0) {
+        const key = (w * 73856093) ^ (h * 19349663) ^ (seed * 83492791);
+        const hue = Math.abs(key) % 360;
+        return `hsl(${hue}, 55%, 58%)`;
+    }
+
+    // ========== Рендер списка деталей ==========
+    function renderParts() {
+        if (!parts.length) {
+            partsContainer.innerHTML = '<div class="empty-parts">Нет добавленных деталей</div>';
+            return;
+        }
+        let html = '';
+        parts.forEach(part => {
+            html += `
+                <div class="part-item" data-id="${part.id}">
+                    <span class="dim">${part.width}×${part.height} мм</span>
+                    <span class="qty">${part.qty} шт</span>
+                    <button class="remove" data-id="${part.id}" title="Удалить">✕</button>
+                </div>`;
+        });
+        partsContainer.innerHTML = html;
+        partsContainer.querySelectorAll('.remove').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const id = e.target.getAttribute('data-id');
+                parts = parts.filter(p => p.id !== id);
+                renderParts();
+            });
+        });
+    }
+
+    // ========== Добавление детали ==========
+    function addPart() {
+        const w = parseFloat(partWidthInput.value);
+        const h = parseFloat(partHeightInput.value);
+        const q = parseInt(partQtyInput.value, 10);
+
+        if (!(w > 0) || !(h > 0) || !(q > 0)) {
+            showError('Укажите корректные размеры и количество (положительные числа).');
+            return;
+        }
+        if (!Number.isFinite(w) || !Number.isFinite(h) || !Number.isFinite(q)) {
+            showError('Некорректные значения.');
+            return;
+        }
+
+        const width = Math.round(w * 100) / 100;
+        const height = Math.round(h * 100) / 100;
+
+        const sheetW = parseFloat(sheetWidthInput.value) || 0;
+        const sheetH = parseFloat(sheetHeightInput.value) || 0;
+        const rotate = allowRotateInput.checked;
+        const fitsAsIs = width <= sheetW && height <= sheetH;
+        const fitsRotated = rotate && height <= sheetW && width <= sheetH;
+        if (!fitsAsIs && !fitsRotated) {
+            if (!confirm(`Деталь ${width}×${height} мм не помещается на лист ${sheetW}×${sheetH} мм${rotate ? ' ни в одной ориентации' : ''}. Всё равно добавить?`)) {
+                return;
+            }
+        }
+
+        parts.push({ id: uid(), width, height, qty: q });
+        renderParts();
+        partWidthInput.focus();
+    }
+
+    // ========== Алгоритм упаковки MaxRects ==========
+    function packOnSheet(sheetW, sheetH, rects, allowRotate) {
+        const freeRects = [{ x: 0, y: 0, w: sheetW, h: sheetH }];
+        const placed = [];
+        const remaining = [];
+        const sorted = rects.slice().sort((a, b) => (b.w * b.h) - (a.w * a.h));
+
+        for (const rect of sorted) {
+            const variants = [];
+            variants.push({ w: rect.w, h: rect.h, rotated: false });
+            if (allowRotate && Math.abs(rect.w - rect.h) > 1e-9) {
+                variants.push({ w: rect.h, h: rect.w, rotated: true });
+            }
+
+            let best = null;
+            for (const v of variants) {
+                for (let i = 0; i < freeRects.length; i++) {
+                    const fr = freeRects[i];
+                    if (v.w <= fr.w + 1e-9 && v.h <= fr.h + 1e-9) {
+                        const leftoverHoriz = Math.abs(fr.w - v.w);
+                        const leftoverVert = Math.abs(fr.h - v.h);
+                        const shortSide = Math.min(leftoverHoriz, leftoverVert);
+                        const longSide = Math.max(leftoverHoriz, leftoverVert);
+                        if (
+                            !best ||
+                            shortSide < best.score1 - 1e-9 ||
+                            (Math.abs(shortSide - best.score1) < 1e-9 && longSide < best.score2 - 1e-9)
+                        ) {
+                            best = {
+                                freeIndex: i,
+                                x: fr.x, y: fr.y,
+                                w: v.w, h: v.h,
+                                rotated: v.rotated,
+                                score1: shortSide,
+                                score2: longSide
+                            };
+                        }
+                    }
+                }
+            }
+
+            if (!best) {
+                remaining.push(rect);
+                continue;
+            }
+
+            placed.push({
+                x: best.x, y: best.y,
+                w: best.w, h: best.h,
+                rotated: best.rotated,
+                sourceId: rect.sourceId,
+                originalW: rect.originalW,
+                originalH: rect.originalH,
+                color: rect.color
+            });
+
+            const usedRect = { x: best.x, y: best.y, w: best.w, h: best.h };
+            const newFree = [];
+            for (const fr of freeRects) {
+                if (!intersect(fr, usedRect)) {
+                    newFree.push(fr);
+                    continue;
+                }
+                if (usedRect.y > fr.y) {
+                    newFree.push({ x: fr.x, y: fr.y, w: fr.w, h: usedRect.y - fr.y });
+                }
+                if (usedRect.y + usedRect.h < fr.y + fr.h) {
+                    newFree.push({ x: fr.x, y: usedRect.y + usedRect.h, w: fr.w, h: (fr.y + fr.h) - (usedRect.y + usedRect.h) });
+                }
+                if (usedRect.x > fr.x) {
+                    newFree.push({ x: fr.x, y: fr.y, w: usedRect.x - fr.x, h: fr.h });
+                }
+                if (usedRect.x + usedRect.w < fr.x + fr.w) {
+                    newFree.push({ x: usedRect.x + usedRect.w, y: fr.y, w: (fr.x + fr.w) - (usedRect.x + usedRect.w), h: fr.h });
+                }
+            }
+            const pruned = pruneFreeRects(newFree);
+            freeRects.length = 0;
+            for (const fr of pruned) freeRects.push(fr);
+        }
+
+        return { placed, remaining };
+    }
+
+    function intersect(a, b) {
+        return !(b.x >= a.x + a.w || b.x + b.w <= a.x || b.y >= a.y + a.h || b.y + b.h <= a.y);
+    }
+
+    function contains(outer, inner) {
+        return (
+            inner.x >= outer.x - 1e-9 &&
+            inner.y >= outer.y - 1e-9 &&
+            inner.x + inner.w <= outer.x + outer.w + 1e-9 &&
+            inner.y + inner.h <= outer.y + outer.h + 1e-9
+        );
+    }
+
+    function pruneFreeRects(rects) {
+        let filtered = rects.filter(r => r.w > 1e-6 && r.h > 1e-6);
+        const result = [];
+        for (let i = 0; i < filtered.length; i++) {
+            let dominated = false;
+            for (let j = 0; j < filtered.length; j++) {
+                if (i === j) continue;
+                if (contains(filtered[j], filtered[i])) {
+                    if (
+                        filtered[j].w * filtered[j].h > filtered[i].w * filtered[i].h ||
+                        (filtered[j].w === filtered[i].w && filtered[j].h === filtered[i].h && j < i)
+                    ) {
+                        dominated = true;
+                        break;
+                    }
+                }
+            }
+            if (!dominated) result.push(filtered[i]);
+        }
+        return result;
+    }
+
+    // ========== Расчёт длины реза ==========
+    function calcCutLength(placedReal) {
+        const vertEdges = [];
+        const horizEdges = [];
+
+        for (const p of placedReal) {
+            const x1 = p.x, x2 = p.x + p.w;
+            const y1 = p.y, y2 = p.y + p.h;
+            vertEdges.push({ x: x1, y1, y2 });
+            vertEdges.push({ x: x2, y1, y2 });
+            horizEdges.push({ y: y1, x1, x2 });
+            horizEdges.push({ y: y2, x1, x2 });
+        }
+
+        function mergeSegments(segments, coordKey, startKey, endKey) {
+            const groups = new Map();
+            for (const s of segments) {
+                const coord = s[coordKey];
+                if (!groups.has(coord)) groups.set(coord, []);
+                groups.get(coord).push([s[startKey], s[endKey]]);
+            }
+            let total = 0;
+            for (const [, intervals] of groups) {
+                intervals.sort((a, b) => a[0] - b[0]);
+                let curStart = intervals[0][0];
+                let curEnd = intervals[0][1];
+                for (let i = 1; i < intervals.length; i++) {
+                    const [s, e] = intervals[i];
+                    if (s <= curEnd + 1e-9) {
+                        curEnd = Math.max(curEnd, e);
+                    } else {
+                        total += curEnd - curStart;
+                        curStart = s;
+                        curEnd = e;
+                    }
+                }
+                total += curEnd - curStart;
+            }
+            return total;
+        }
+
+        const vertLen = mergeSegments(vertEdges, 'x', 'y1', 'y2');
+        const horizLen = mergeSegments(horizEdges, 'y', 'x1', 'x2');
+        return vertLen + horizLen;
+    }
+
+    // ========== Полный расчёт ==========
+    function calculateAll() {
+        errorMessage.classList.remove('visible');
+
+        const sheetW = parseFloat(sheetWidthInput.value);
+        const sheetH = parseFloat(sheetHeightInput.value);
+        const allowRotate = allowRotateInput.checked;
+        const useKerf = autoKerfInput.checked;
+        const kerf = useKerf ? Math.max(0, parseFloat(kerfInput.value) || 0) : 0;
+
+        if (!(sheetW > 0) || !(sheetH > 0)) {
+            showError('Укажите корректные размеры листа.');
+            return null;
+        }
+        if (!parts.length) {
+            showError('Добавьте хотя бы одну деталь.');
+            return null;
+        }
+
+        const flat = [];
+        parts.forEach((part, idx) => {
+            const color = colorForPart(part.width, part.height, idx);
+            for (let i = 0; i < part.qty; i++) {
+                flat.push({
+                    w: part.width + kerf,
+                    h: part.height + kerf,
+                    originalW: part.width,
+                    originalH: part.height,
+                    sourceId: part.id,
+                    color
+                });
+            }
+        });
+
+        const sheets = [];
+        let remaining = flat;
+        const maxSheets = 1000;
+        while (remaining.length > 0 && sheets.length < maxSheets) {
+            const { placed, remaining: stillRemaining } = packOnSheet(
+                sheetW + kerf,
+                sheetH + kerf,
+                remaining,
+                allowRotate
+            );
+            if (placed.length === 0) break;
+            sheets.push(placed);
+            remaining = stillRemaining;
+        }
+
+        if (remaining.length > 0) {
+            showError(`Не удалось разместить ${remaining.length} дет. Проверьте размеры.`);
+        }
+
+        let totalCutLength = 0;
+        const cutPerSheet = [];
+        for (const placed of sheets) {
+            const realPlaced = placed.map(p => ({
+                x: p.x, y: p.y,
+                w: p.originalW, h: p.originalH
+            }));
+            const len = calcCutLength(realPlaced);
+            cutPerSheet.push(len);
+            totalCutLength += len;
+        }
+
+        let totalPartArea = 0;
+        let totalParts = 0;
+        parts.forEach(p => {
+            totalPartArea += p.width * p.height * p.qty;
+            totalParts += p.qty;
+        });
+        const totalSheetArea = sheets.length * sheetW * sheetH;
+        const utilization = totalSheetArea > 0 ? (totalPartArea / totalSheetArea * 100) : 0;
+
+        const result = {
+            sheetW, sheetH, allowRotate, kerf, useKerf,
+            sheets,
+            totalParts,
+            totalPartArea,
+            totalSheetArea,
+            utilization,
+            cutPerSheet,
+            totalCutLength,
+            remainingCount: remaining.length
+        };
+        lastResult = result;
+        return result;
+    }
+
+    // ========== Отрисовка листа ==========
+    function drawSheet(canvas, sheetW, sheetH, placed) {
+        const dpr = window.devicePixelRatio || 1;
+        const maxDisplayW = 900;
+        const scale = Math.min(maxDisplayW / sheetW, 1);
+        const cssW = Math.max(200, sheetW * scale);
+        const cssH = sheetH * scale;
+
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        canvas.style.width = cssW + 'px';
+        canvas.style.height = cssH + 'px';
+
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        ctx.fillStyle = '#0a1a24';
+        ctx.fillRect(0, 0, cssW, cssH);
+
+        ctx.strokeStyle = '#16303f';
+        ctx.lineWidth = 0.5;
+        const gridStep = 100 * scale;
+        for (let x = gridStep; x < cssW; x += gridStep) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cssH); ctx.stroke();
+        }
+        for (let y = gridStep; y < cssH; y += gridStep) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cssW, y); ctx.stroke();
+        }
+
+        ctx.strokeStyle = '#3d6b88';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(0.5, 0.5, cssW - 1, cssH - 1);
+
+        for (const p of placed) {
+            const x = p.x * scale;
+            const y = p.y * scale;
+            const w = p.w * scale;
+            const h = p.h * scale;
+
+            ctx.fillStyle = p.color || '#3b82a8';
+            ctx.fillRect(x, y, w, h);
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+            ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+
+            if (w > 42 && h > 24) {
+                ctx.fillStyle = 'rgba(0,0,0,0.85)';
+                ctx.font = `bold ${Math.min(14, Math.max(9, Math.min(w, h) / 4))}px system-ui`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const label = `${Math.round(p.originalW)}×${Math.round(p.originalH)}`;
+                ctx.fillText(label, cx, cy);
+                if (p.rotated && w > 60 && h > 40) {
+                    ctx.font = `${Math.min(10, Math.max(7, Math.min(w, h) / 6))}px system-ui`;
+                    ctx.fillText('↻', cx, cy + 14);
+                }
+            }
+        }
+    }
+
+    // ========== Рендер результатов ==========
+    function renderResult(result) {
+        if (!result) {
+            sheetsNeededSpan.textContent = '—';
+            return;
+        }
+
+        sheetsNeededSpan.textContent = result.sheets.length;
+        totalPartsSpan.textContent = fmt(result.totalParts);
+        partAreaSpan.textContent = fmt(result.totalPartArea / 1e6, 3) + ' м²';
+        sheetAreaSpan.textContent = fmt(result.totalSheetArea / 1e6, 3) + ' м²';
+        const util = result.utilization;
+        utilizationSpan.textContent = util.toFixed(1) + '%';
+        utilBar.style.width = Math.min(100, util) + '%';
+        utilBox.classList.remove('good', 'warn');
+        if (util >= 70) utilBox.classList.add('good');
+        else if (util < 40) utilBox.classList.add('warn');
+
+        const cutM = result.totalCutLength / 1000;
+        cutLengthSpan.textContent = cutM.toFixed(2) + ' м';
+
+        // Легенда с количеством деталей
+        let legendHtml = '';
+        parts.forEach((part, idx) => {
+            const color = colorForPart(part.width, part.height, idx);
+            legendHtml += `<div class="legend-item">
+                <div class="legend-color" style="background:${color};"></div>
+                <span class="legend-dim">${part.width}×${part.height} мм</span>
+                <span class="legend-qty">${part.qty} шт</span>
+            </div>`;
+        });
+        legendDiv.innerHTML = legendHtml;
+
+        if (!result.sheets.length) {
+            sheetsView.innerHTML = `<div class="empty-state"><div class="big">⚠️</div><div>Не удалось разместить детали. Проверьте размеры.</div></div>`;
+            return;
+        }
+
+        let html = '';
+        result.sheets.forEach((placed, i) => {
+            const id = 'sheet-canvas-' + i;
+            const covered = placed.reduce((s, p) => s + p.originalW * p.originalH, 0);
+            const sheetArea = result.sheetW * result.sheetH;
+            const u = sheetArea > 0 ? (covered / sheetArea * 100) : 0;
+            const cutM = (result.cutPerSheet[i] || 0) / 1000;
+            html += `
+                <div class="sheet-wrap">
+                    <div class="sheet-header">
+                        <span class="title">Лист ${i + 1}</span>
+                        <span>Деталей: <b>${placed.length}</b></span>
+                        <span>Заполнение: <b>${u.toFixed(1)}%</b></span>
+                        <span>Рез: <b>${cutM.toFixed(2)} м</b></span>
+                        <span>${result.sheetW}×${result.sheetH} мм</span>
+                    </div>
+                    <div class="sheet-canvas-wrap">
+                        <canvas class="sheet-canvas" id="${id}"></canvas>
+                    </div>
+                </div>`;
+        });
+        sheetsView.innerHTML = html;
+
+        result.sheets.forEach((placed, i) => {
+            const canvas = document.getElementById('sheet-canvas-' + i);
+            if (canvas) drawSheet(canvas, result.sheetW, result.sheetH, placed);
+        });
+
+        printMeta.textContent = `Лист: ${result.sheetW}×${result.sheetH} мм · Листов: ${result.sheets.length} · Деталей: ${result.totalParts} · Использование: ${util.toFixed(1)}% · Длина реза: ${cutM.toFixed(2)} м`;
+    }
+
+    // ========== Сохранение / загрузка ==========
+    function openSaveModal() {
+        const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        fileNameInput.value = `raskroy-${ts}`;
+        updateFileNamePreview();
+        saveModal.classList.add('visible');
+        setTimeout(() => { fileNameInput.focus(); fileNameInput.select(); }, 50);
+    }
+
+    function updateFileNamePreview() {
+        const name = (fileNameInput.value || 'raskroy').trim();
+        fileNamePreview.textContent = name + '.json';
+    }
+
+    function closeSaveModal() {
+        saveModal.classList.remove('visible');
+    }
+
+    function doSaveProject() {
+        const rawName = (fileNameInput.value || 'raskroy').trim();
+        const safeName = rawName.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_');
+        const fileName = (safeName || 'raskroy') + '.json';
+
+        const data = {
+            version: 1,
+            savedAt: new Date().toISOString(),
+            sheet: {
+                width: parseFloat(sheetWidthInput.value) || 0,
+                height: parseFloat(sheetHeightInput.value) || 0,
+                allowRotate: allowRotateInput.checked,
+                useKerf: autoKerfInput.checked,
+                kerf: parseFloat(kerfInput.value) || 0
+            },
+            parts: parts.map(p => ({ width: p.width, height: p.height, qty: p.qty }))
+        };
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        closeSaveModal();
+        showSuccess(`Сохранено: ${fileName}`);
+    }
+
+    function loadProjectFile(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (!data || typeof data !== 'object') throw new Error('Неверный формат файла.');
+
+                if (data.sheet) {
+                    if (data.sheet.width > 0) sheetWidthInput.value = data.sheet.width;
+                    if (data.sheet.height > 0) sheetHeightInput.value = data.sheet.height;
+                    allowRotateInput.checked = !!data.sheet.allowRotate;
+                    autoKerfInput.checked = !!data.sheet.useKerf;
+                    if (typeof data.sheet.kerf === 'number') kerfInput.value = data.sheet.kerf;
+                }
+
+                if (Array.isArray(data.parts)) {
+                    parts = data.parts
+                        .filter(p => p && p.width > 0 && p.height > 0 && p.qty > 0)
+                        .map(p => ({
+                            id: uid(),
+                            width: Number(p.width),
+                            height: Number(p.height),
+                            qty: Math.max(1, Math.floor(Number(p.qty)))
+                        }));
+                } else {
+                    parts = [];
+                }
+
+                renderParts();
+                lastResult = null;
+                const result = calculateAll();
+                renderResult(result);
+                showSuccess(`Загружено деталей: ${parts.length}.`);
+            } catch (err) {
+                console.error(err);
+                showError('Не удалось загрузить файл: ' + err.message);
+            }
+        };
+        reader.onerror = () => showError('Ошибка чтения файла.');
+        reader.readAsText(file);
+    }
+
+    // ========== Экспорт в Excel ==========
+    function exportToExcel() {
+        if (!lastResult || !lastResult.sheets.length) {
+            showError('Сначала выполните расчёт.');
+            return;
+        }
+        if (typeof XLSX === 'undefined') {
+            showError('Библиотека Excel не загружена. Проверьте интернет-соединение.');
+            return;
+        }
+
+        const wb = XLSX.utils.book_new();
+        const r = lastResult;
+
+        // ---- Лист 1: Сводка ----
+        const summaryData = [
+            ['РАСКРОЙ ЛИСТА МЕТАЛЛА'],
+            ['Дата', new Date().toLocaleString('ru-RU')],
+            [],
+            ['ПАРАМЕТРЫ ЛИСТА'],
+            ['Ширина листа, мм', r.sheetW],
+            ['Высота листа, мм', r.sheetH],
+            ['Поворот деталей', r.allowRotate ? 'Да' : 'Нет'],
+            ['Учёт реза (зазор)', r.useKerf ? 'Да' : 'Нет'],
+            ['Зазор, мм', r.kerf],
+            [],
+            ['ИТОГИ'],
+            ['Требуется листов', r.sheets.length],
+            ['Всего деталей', r.totalParts],
+            ['Площадь деталей, м²', +(r.totalPartArea / 1e6).toFixed(4)],
+            ['Площадь листов, м²', +(r.totalSheetArea / 1e6).toFixed(4)],
+            ['Использование, %', +r.utilization.toFixed(2)],
+            ['Общая длина реза, м', +(r.totalCutLength / 1000).toFixed(3)],
+            [],
+            ['РАЗМЕЩЕНО ПО ЛИСТАМ'],
+            ['Лист', 'Деталей', 'Площадь деталей, мм²', 'Заполнение, %', 'Длина реза, мм']
+        ];
+        r.sheets.forEach((placed, i) => {
+            const covered = placed.reduce((s, p) => s + p.originalW * p.originalH, 0);
+            const sheetArea = r.sheetW * r.sheetH;
+            const u = sheetArea > 0 ? (covered / sheetArea * 100) : 0;
+            summaryData.push([
+                i + 1,
+                placed.length,
+                +covered.toFixed(2),
+                +u.toFixed(2),
+                +r.cutPerSheet[i].toFixed(2)
+            ]);
+        });
+
+        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+        wsSummary['!cols'] = [
+            { wch: 30 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 18 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка');
+
+        // ---- Лист 2: Спецификация деталей ----
+        const specData = [
+            ['СПЕЦИФИКАЦИЯ ДЕТАЛЕЙ'],
+            [],
+            ['№', 'Ширина, мм', 'Высота, мм', 'Кол-во, шт', 'Площадь 1 шт, мм²', 'Общая площадь, мм²']
+        ];
+        parts.forEach((p, i) => {
+            specData.push([
+                i + 1,
+                p.width,
+                p.height,
+                p.qty,
+                +(p.width * p.height).toFixed(2),
+                +(p.width * p.height * p.qty).toFixed(2)
+            ]);
+        });
+        specData.push([]);
+        specData.push(['ИТОГО', '', '', r.totalParts, '', +r.totalPartArea.toFixed(2)]);
+
+        const wsSpec = XLSX.utils.aoa_to_sheet(specData);
+        wsSpec['!cols'] = [
+            { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 20 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsSpec, 'Спецификация');
+
+        // ---- Лист 3: Карта раскроя (координаты) ----
+        const mapData = [
+            ['КАРТА РАСКРОЯ — КООРДИНАТЫ ДЕТАЛЕЙ'],
+            ['Система координат: X — слева направо, Y — сверху вниз. Отсчёт от левого верхнего угла листа.'],
+            [],
+            ['Лист', '№ дет.', 'X, мм', 'Y, мм', 'Ширина, мм', 'Высота, мм', 'Повёрнута', 'Площадь, мм²']
+        ];
+        r.sheets.forEach((placed, sheetIdx) => {
+            placed.forEach((p, partIdx) => {
+                mapData.push([
+                    sheetIdx + 1,
+                    partIdx + 1,
+                    +p.x.toFixed(2),
+                    +p.y.toFixed(2),
+                    p.originalW,
+                    p.originalH,
+                    p.rotated ? 'Да' : 'Нет',
+                    +(p.originalW * p.originalH).toFixed(2)
+                ]);
+            });
+        });
+
+        const wsMap = XLSX.utils.aoa_to_sheet(mapData);
+        wsMap['!cols'] = [
+            { wch: 7 }, { wch: 8 }, { wch: 10 }, { wch: 10 },
+            { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 16 }
+        ];
+        XLSX.utils.book_append_sheet(wb, wsMap, 'Карта раскроя');
+
+        // ---- Лист 4: Рез по листам ----
+        const cutData = [
+            ['ДЛИНА РЕЗА ПО ЛИСТАМ'],
+            [],
+            ['Лист', 'Длина реза, мм', 'Длина реза, м']
+        ];
+        r.cutPerSheet.forEach((len, i) => {
+            cutData.push([i + 1, +len.toFixed(2), +(len / 1000).toFixed(3)]);
+        });
+        cutData.push([]);
+        cutData.push(['ИТОГО', +r.totalCutLength.toFixed(2), +(r.totalCutLength / 1000).toFixed(3)]);
+
+        const wsCut = XLSX.utils.aoa_to_sheet(cutData);
+        wsCut['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 18 }];
+        XLSX.utils.book_append_sheet(wb, wsCut, 'Длина реза');
+
+        const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        XLSX.writeFile(wb, `raskroy-${ts}.xlsx`);
+        showSuccess('Excel-файл сформирован.');
+    }
+
+    // ========== Обработчики ==========
+    addPartBtn.addEventListener('click', addPart);
+    [partWidthInput, partHeightInput, partQtyInput].forEach(inp => {
+        inp.addEventListener('keypress', e => {
+            if (e.key === 'Enter') { e.preventDefault(); addPart(); }
+        });
+    });
+
+    calcBtn.addEventListener('click', () => {
+        const result = calculateAll();
+        renderResult(result);
+    });
+
+    clearPartsBtn.addEventListener('click', () => {
+        if (!parts.length) return;
+        if (confirm('Удалить все детали?')) {
+            parts = [];
+            renderParts();
+            lastResult = null;
+            resetResultView();
+            errorMessage.classList.remove('visible');
+        }
+    });
+
+    resetAllBtn.addEventListener('click', () => {
+        if (!confirm('Сбросить все настройки и данные?')) return;
+        sheetWidthInput.value = 1000;
+        sheetHeightInput.value = 2000;
+        allowRotateInput.checked = true;
+        autoKerfInput.checked = false;
+        kerfInput.value = 2;
+        parts = [];
+        renderParts();
+        lastResult = null;
+        resetResultView();
+        errorMessage.classList.remove('visible');
+        partWidthInput.value = 300;
+        partHeightInput.value = 400;
+        partQtyInput.value = 4;
+    });
+
+    function resetResultView() {
+        sheetsNeededSpan.textContent = '0';
+        totalPartsSpan.textContent = '0';
+        partAreaSpan.textContent = '0';
+        sheetAreaSpan.textContent = '0';
+        utilizationSpan.textContent = '0%';
+        utilBar.style.width = '0%';
+        cutLengthSpan.textContent = '0 м';
+        legendDiv.innerHTML = '';
+        sheetsView.innerHTML = `<div class="empty-state"><div class="big">📄</div><div>Добавьте детали и нажмите «Рассчитать».</div></div>`;
+    }
+
+    printBtn.addEventListener('click', () => {
+        if (!lastResult || parts.length === 0) {
+            showError('Сначала выполните расчёт.');
+            return;
+        }
+        window.print();
+    });
+
+    saveBtn.addEventListener('click', openSaveModal);
+    saveCancelBtn.addEventListener('click', closeSaveModal);
+    saveConfirmBtn.addEventListener('click', doSaveProject);
+    fileNameInput.addEventListener('input', updateFileNamePreview);
+    fileNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); doSaveProject(); }
+        if (e.key === 'Escape') closeSaveModal();
+    });
+    saveModal.addEventListener('click', (e) => {
+        if (e.target === saveModal) closeSaveModal();
+    });
+
+    loadBtn.addEventListener('click', () => {
+        fileInput.value = '';
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) loadProjectFile(file);
+    });
+
+    excelBtn.addEventListener('click', exportToExcel);
+
+    // ========== Инициализация ==========
+    renderParts();
+    setTimeout(() => {
+        parts.push({ id: uid(), width: 300, height: 400, qty: 4 });
+        parts.push({ id: uid(), width: 500, height: 250, qty: 3 });
+        parts.push({ id: uid(), width: 200, height: 200, qty: 5 });
+        renderParts();
+        const result = calculateAll();
+        renderResult(result);
+    }, 100);
+
+})();
+</script>
+
+<!-- Библиотека SheetJS для экспорта в Excel -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+</body>
+</html>
